@@ -1,0 +1,11 @@
+{% extends "index.html" %}
+{% block title %}Public Photos{% endblock %}
+{% block content %}
+
+<h1>Available Photos</h1>
+    <ul>
+        {% for photo in photos %}
+            <li>{{ photo }}</li>
+        {% endfor %}
+    </ul>
+{% endblock%}

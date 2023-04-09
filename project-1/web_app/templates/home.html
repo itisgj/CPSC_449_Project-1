@@ -1,0 +1,21 @@
+{% extends "index.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<h1>Upload a file</h1>
+{% if user_exists %}
+<p>Welcome {{ username }}!</p>
+{% endif %}
+{% if user_exists %}
+<form action="/upload/{{ username }}" method="post" enctype="multipart/form-data">
+    <input type="file" name="file">
+    <br>
+    <input type="submit" value="Upload">
+</form>
+{% endif %}
+<a href="/get_public_photos">Show Public Photos</a>
+<a href="/private-pics">Show Private Photos</a>
+{% if user_exists %}
+    <button onclick="location.href='/logout'">Logout</button>
+    {% endif %}
+{% endblock%}
