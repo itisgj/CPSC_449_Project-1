@@ -1,4 +1,5 @@
 
+
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, Flask, abort, session
 from . import db
 import jwt
@@ -14,15 +15,8 @@ auth = Blueprint('auth', __name__)
 
 public_items = ['public_item1', 'public_item2', 'public_item3']
 
-def e(message, status_code):
-    response = {
-        'error': {
-            'message': message,
-            'status': status_code
-        }
-    }
-    return response, status_code
 
+# JWT Authentication, making JWT token
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -38,30 +32,30 @@ def login():
                 login_user(user, remember=True)
 
                 token = jwt.encode({
-                'user_id': user.id,
-                'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+                    'user_id': user.id,
+                    'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
                 }, app.config['SECRET_KEY'], algorithm='HS256')
 
                 session['username_exists'] = user.username
                 session['token'] = token
                 session.permanent = True
 
-
                 user_exists = True
 
                 # data = jsonify({'token':token})
                 # return jsonify({'token':token})
-                return render_template('home.html',username=username_exists, user_exists=user_exists)
+                return render_template('home.html', username=username_exists, user_exists=user_exists)
             else:
                 flash('Incorrect password', category='error')
-                return jsonify({'message':'Incorrect Password'}),401        
+                return jsonify({'message': 'Incorrect Password'}), 401
         else:
             flash('Email is not registered', category='error')
-            return jsonify({'message':'Incorrect Email'}),401  
-
-
+            return jsonify({'message': 'Incorrect Email'}), 401
 
     return render_template('login.html')
+
+# Sign up sessison
+
 
 @auth.route('/sign-up', methods=['GET', 'POST'])
 def sign_up():
@@ -94,14 +88,17 @@ def sign_up():
     email_exists = User.query
     return render_template('signup.html')
 
+
+# Private Route, Read JWT token
 @auth.route('/private-pics', methods=['GET', 'POST'])
 def private_pics():
-    
+
     try:
         if 'username_exists' not in session:
-            flash('Unauthorized',category='error')
-            return render_template('home.html'),401
-        decoded = jwt.decode(session['token'], app.config['SECRET_KEY'], algorithms=['HS256'])
+            flash('Unauthorized', category='error')
+            return render_template('home.html'), 401
+        decoded = jwt.decode(
+            session['token'], app.config['SECRET_KEY'], algorithms=['HS256'])
         print(decoded['user_id'])
 
         user = User.query.get(decoded['user_id'])
@@ -117,15 +114,7 @@ def private_pics():
     return render_template('home.html')
 
 
-
-# @app.route('/upload/<username>', methods=['POST','GET'])
-# def upload_file(username):
-#     # Check if user is logged in
-#     if 'username' not in session:
-#         return redirect('/login')
-#     if session['username_exists'] != username:
-#         return jsonify({'message': 'Invalid username'}), 401
-    
+# Logout session
 @auth.route('/logout')
 @login_required
 def logout():
@@ -136,10 +125,22 @@ def logout():
     return render_template('home.html')
 
 
+# Error Handling
+def e(message, status_code):
+    response = {
+        'error': {
+            'message': message,
+            'status': status_code
+        }
+    }
+    return response, status_code
+
+
 @app.errorhandler(400)
 def bad_request(e):
     message = "The server could not understand the request due to invalid syntax."
     return e(message, 400)
+
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -149,6 +150,7 @@ def handle_exception(e):
         "message": "Internal server error",
     }), 500
 
+
 @app.errorhandler(400)
 def handle_bad_request(e):
     """Handle 400 Bad Request errors"""
@@ -157,6 +159,7 @@ def handle_bad_request(e):
         "message": "Bad Request",
     }), 400
 
+
 @app.errorhandler(401)
 def handle_unauthorized(e):
     """Handle 401 Unauthorized errors"""
@@ -164,6 +167,7 @@ def handle_unauthorized(e):
         "status": 401,
         "message": "Unauthorized",
     }), 401
+
 
 @app.errorhandler(404)
 def handle_not_found(e):
