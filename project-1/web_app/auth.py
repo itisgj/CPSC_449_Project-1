@@ -1,178 +1,107 @@
-
-
-from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify, Flask, abort, session
-from . import db
-import jwt
-from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity
+from flask import Blueprint, render_template, Flask, request, redirect, abort, url_for, jsonify, flash, session
+from flask_login import login_required, current_user
 from .models import User, Photo
-import datetime
-from flask_login import login_user, logout_user, login_required
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import jwt
 import os
+from . import db
+views = Blueprint('views', __name__)
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'mysecretkey'
-auth = Blueprint('auth', __name__)
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
+app.config['ALLOWED_EXTENSIONS'] = set(
+    ['pdf', 'png', 'jpg', 'jpeg', 'gif'])
+app.config['UPLOAD_FOLDER'] = 'uploads'
 
-public_items = ['public_item1', 'public_item2', 'public_item3']
 
 
-# JWT Authentication, making JWT token
-@auth.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+@views.route('/', methods=['GET', 'POST'])
+@views.route('/home', methods=['GET', 'POST'])
+@login_required
+def home():
+    print('hi')
+    if 'username_exists' in session:
+        print('hi')
+        username_exists = session['username_exists']
+        user_exists = True
 
-        user = User.query.filter_by(email=email).first()
-        username_exists = user.username
-        # username_exists = User.query.filter_by(username=user.username).first()
-        if user:
-            if check_password_hash(user.password, password):
-                flash('Logged in successfully!!', category='success')
-                login_user(user, remember=True)
+        return render_template('home.html', username=username_exists, user_exists=user_exists)
+    print('hi')
+    return render_template('home.html')
 
-                token = jwt.encode({
-                    'user_id': user.id,
-                    'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
-                }, app.config['SECRET_KEY'], algorithm='HS256')
 
-                session['username_exists'] = user.username
-                session['token'] = token
-                session.permanent = True
+# View the public photos without authentication
+# Ensure that this endpoint does not require authentication
+@views.route('/get_public_photos', methods=['GET'])
+def get_public_photos():
+    photos_directory = '{}/public_photos'.format(os.getcwd())
+    photos_list = os.listdir(photos_directory)
+    return render_template('public_photos.html', photos=photos_list)
 
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower(
+           ) in app.config['ALLOWED_EXTENSIONS']
+
+
+def get_file_extension(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower()
+
+# File Handling
+
+
+@views.route('/upload/<username>', methods=['POST', 'GET'])
+def upload_files(username):
+    if session['username_exists'] == username:
+        file = request.files['file']
+        filename = secure_filename(file.filename)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_extension = get_file_extension(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            flash('Upload is successfully!!', category='success')
+            file_info = Photo(filename=filename, filepath=os.path.join(
+                app.config['UPLOAD_FOLDER']), user_id=username)
+            db.session.add(file_info)
+            db.session.commit()
+            if session['username_exists']:
+                username_exists = session['username_exists']
                 user_exists = True
 
-                # data = jsonify({'token':token})
-                # return jsonify({'token':token})
                 return render_template('home.html', username=username_exists, user_exists=user_exists)
-            else:
-                flash('Incorrect password', category='error')
-                return jsonify({'message': 'Incorrect Password'}), 401
+            return render_template('home.html')
+        filename = secure_filename(file.filename)
+        filepath = '{}{}'.format(os.path.join(
+            app.config['UPLOAD_FOLDER'])+'/', filename)
+        file.save(filepath)
+        file_size = os.path.getsize(filepath)
+        print('{}'.format(file_size))
+        if file_size == 0:
+            flash('Upload a file in order to see the uploads', category='error')
+            os.remove(filepath)
+            if session['username_exists']:
+                username_exists = session['username_exists']
+                user_exists = True
+
+                return render_template('home.html', username=username_exists, user_exists=user_exists)
+            return render_template('home.html')
+        elif file_size > app.config['MAX_CONTENT_LENGTH']:
+            flash('Max file size reached', category='error')
+            os.remove(filepath)
+            if session['username_exists']:
+                username_exists = session['username_exists']
+                user_exists = True
+
+                return render_template('home.html', username=username_exists, user_exists=user_exists)
+            return render_template('home.html')
         else:
-            flash('Email is not registered', category='error')
-            return jsonify({'message': 'Incorrect Email'}), 401
+            flash('Enter correct format', category='error')
+            os.remove(filepath)
+            if session['username_exists']:
+                username_exists = session['username_exists']
+                user_exists = True
 
-    return render_template('login.html')
-
-# Sign up sessison
-
-
-@auth.route('/sign-up', methods=['GET', 'POST'])
-def sign_up():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-
-        email_exists = User.query.filter_by(email=email).first()
-        username_exists = User.query.filter_by(username=username).first()
-        if email_exists:
-            flash('User exists', category='error')
-        elif username_exists:
-            flash('Username in use', category='error')
-        elif len(email) < 4:
-            flash('Invalid email', category='error')
-        elif len(username) < 2:
-            flash('Username is short', category='error')
-        elif len(password) < 6:
-            flash('Password is short', category='error')
-        else:
-            new_user = User(email=email, username=username, password=generate_password_hash(
-                password, method='sha256'))
-            db.session.add(new_user)
-            db.session.commit()
-            login_user(new_user, remember=True)
-            flash('User profile created!!')
-            return redirect(url_for('views.home'))
-
-    email_exists = User.query
-    return render_template('signup.html')
-
-
-# Private Route, Read JWT token
-@auth.route('/private-pics', methods=['GET', 'POST'])
-def private_pics():
-
-    try:
-        if 'username_exists' not in session:
-            flash('Unauthorized', category='error')
-            return render_template('home.html'), 401
-        decoded = jwt.decode(
-            session['token'], app.config['SECRET_KEY'], algorithms=['HS256'])
-        print(decoded['user_id'])
-
-        user = User.query.get(decoded['user_id'])
-        name = user.username
-        print(name)
-        photos = Photo.query.filter_by(user_id=name).all()
-        filenames = [file.filename for file in photos]
-        return render_template('private-pics.html', photos=filenames)
-    except jwt.ExpiredSignatureError:
-        flash("Token has expired.", category='error')
-    except jwt.InvalidTokenError:
-        flash('Token is invalid', category='error')
-    return render_template('home.html')
-
-
-# Logout session
-@auth.route('/logout')
-@login_required
-def logout():
-    if session['username_exists']:
-        session.pop('username_exists')
-        # session.pop('token')
-        return render_template('home.html')
-    return render_template('home.html')
-
-
-# Error Handling
-def e(message, status_code):
-    response = {
-        'error': {
-            'message': message,
-            'status': status_code
-        }
-    }
-    return response, status_code
-
-
-@app.errorhandler(400)
-def bad_request(e):
-    message = "The server could not understand the request due to invalid syntax."
-    return e(message, 400)
-
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Handle all other exceptions"""
-    return jsonify({
-        "status": 500,
-        "message": "Internal server error",
-    }), 500
-
-
-@app.errorhandler(400)
-def handle_bad_request(e):
-    """Handle 400 Bad Request errors"""
-    return jsonify({
-        "status": 400,
-        "message": "Bad Request",
-    }), 400
-
-
-@app.errorhandler(401)
-def handle_unauthorized(e):
-    """Handle 401 Unauthorized errors"""
-    return jsonify({
-        "status": 401,
-        "message": "Unauthorized",
-    }), 401
-
-
-@app.errorhandler(404)
-def handle_not_found(e):
-    """Handle 404 Not Found errors"""
-    return jsonify({
-        "status": 404,
-        "message": "Not Found",
-    }), 404
+                return render_template('home.html', username=username_exists, user_exists=user_exists)
+            return render_template('home.html')
